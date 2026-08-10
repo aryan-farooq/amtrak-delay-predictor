@@ -1,0 +1,15 @@
+{
+    "train_number": 351,
+    "destination": "Ann Arbor",
+    "destination_code": "ARB",
+    "features": [
+        "det_delay",
+        "der_delay"
+    ],
+    "historical_test_mae_minutes": 3.3,
+    "historical_median_error_minutes": 1.82,
+    "within_3_minutes_percent": 73.7,
+    "within_5_minutes_percent": 86.6,
+    "interval_coverage_percent": 81.2,
+    "median_interval_width_minutes": 7.31
+}
