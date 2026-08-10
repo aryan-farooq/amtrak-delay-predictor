@@ -113,9 +113,12 @@ def add_delay_to_time(
         scheduled_time
     )
 
+    # Round prediction to nearest whole minute
+    rounded_delay = round(float(delay_minutes))
+
     predicted_datetime = (
         scheduled_datetime
-        + timedelta(minutes=float(delay_minutes))
+        + timedelta(minutes=rounded_delay)
     )
 
     return predicted_datetime.strftime(
@@ -129,15 +132,18 @@ def add_delay_to_time(
 
 st.title("🚆 Wolverine ETA Predictor")
 
-st.write(
-    "Predict the arrival of Amtrak Train 351 "
-    "at Ann Arbor using the train's observed "
-    "delays at Detroit and Dearborn."
+st.markdown(
+    """
+    **Train 351 · Detroit → Dearborn → Ann Arbor**
+
+    Machine-learning ETA estimates using observed
+    upstream train delays.
+    """
 )
 
 st.caption(
-    "Experimental machine-learning project — "
-    "not affiliated with or operated by Amtrak."
+    "Independent data science project. "
+    "Not affiliated with Amtrak."
 )
 
 st.divider()
@@ -146,6 +152,16 @@ st.divider()
 # ==========================================
 # INPUT SECTION
 # ==========================================
+
+st.markdown(
+    """
+    ### Route
+
+    **Detroit**  →  **Dearborn**  →  **Ann Arbor**
+    
+    Observed　　　Observed　　　　Predicted
+    """
+)
 
 st.subheader("Current train status")
 
@@ -219,24 +235,29 @@ if st.button(
     # MAIN RESULT
     # ======================================
 
-    st.divider()
+   st.divider()
 
-    st.subheader("Prediction")
+st.subheader("Prediction")
 
-    st.metric(
-        "Predicted Ann Arbor arrival",
-        predicted_time,
-        f"{prediction:.1f} min late"
+with st.container(border=True):
+
+    st.caption("PREDICTED ANN ARBOR ARRIVAL")
+
+    st.markdown(
+        f"# {predicted_time}"
     )
 
-    st.write(
-        f"**Likely arrival range:** "
-        f"{lower_time} – {upper_time}"
+    st.markdown(
+        f"**{prediction:.1f} minutes late**"
+    )
+
+    st.markdown(
+        f"Likely arrival: "
+        f"**{lower_time} – {upper_time}**"
     )
 
     st.caption(
-        "The range represents the model's "
-        "approximately 80% prediction interval."
+        "Approximately 80% historical prediction interval"
     )
 
 
