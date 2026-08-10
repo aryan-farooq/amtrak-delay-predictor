@@ -291,7 +291,7 @@ st.subheader("Historical model performance")
 metric1, metric2, metric3 = st.columns(3)
 
 metric1.metric(
-    "Mean error",
+    "Mean absolute error",
     f"{model_info['historical_test_mae_minutes']:.1f} min"
 )
 
