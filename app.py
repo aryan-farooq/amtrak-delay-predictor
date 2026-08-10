@@ -235,7 +235,7 @@ if st.button(
     # MAIN RESULT
     # ======================================
 
-   st.divider()
+st.divider()
 
 st.subheader("Prediction")
 
