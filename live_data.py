@@ -232,42 +232,69 @@ def get_train_351_status():
         # ----------------------------------
         # Find today's Train 351
         # ----------------------------------
-
+        
+        expected_trip_id = (
+            f"{michigan_now.strftime('%Y-%m-%d')}"
+            f"_AMTK_351"
+        )
+        
         train_update = None
-
+        train_vehicle = None
+        
+        # First search TripUpdate entities
         for entity in feed.entity:
-
-            if not entity.HasField(
-                "trip_update"
-            ):
+        
+            if not entity.HasField("trip_update"):
                 continue
-
+        
             update = entity.trip_update
-
-            trip_id = update.trip.trip_id
-
-            start_date = update.trip.start_date
-
-            is_train_351 = (
-                trip_id.endswith("_AMTK_351")
-                or "_351" in trip_id
-            )
-
-            is_today = (
-                trip_id.startswith(
-                    today_trip_prefix
-                )
-                or start_date == today_gtfs_date
-            )
-
-            if is_train_351 and is_today:
-
+        
+            trip_id = update.trip.trip_id.strip()
+        
+            if trip_id == expected_trip_id:
+        
                 train_update = update
                 break
-
-
+        
+        
+        # Also search VehiclePosition entities
+        for entity in feed.entity:
+        
+            if not entity.HasField("vehicle"):
+                continue
+        
+            vehicle = entity.vehicle
+        
+            trip_id = vehicle.trip.trip_id.strip()
+        
+            if trip_id == expected_trip_id:
+        
+                train_vehicle = vehicle
+                break
+        
+        
+        # Train exists if either source contains it
+        if train_update is None and train_vehicle is None:
+        
+            result["error"] = (
+                f"Could not find {expected_trip_id} "
+                f"in either TripUpdates or VehiclePositions."
+            )
+        
+            return result
+        
+        
+        result["train_found"] = True
+        
+        
+        # We need TripUpdate data to get station delays
         if train_update is None:
-
+        
+            result["error"] = (
+                "Train 351 is active in the realtime feed, "
+                "but no stop-time update is currently available."
+            )
+        
             return result
 
 
@@ -318,3 +345,57 @@ def get_train_351_status():
         result["error"] = str(exc)
 
         return result
+
+@st.cache_data(ttl=60, show_spinner=False)
+def debug_train_ids():
+
+    response = requests.get(
+        REALTIME_URL,
+        timeout=20
+    )
+
+    response.raise_for_status()
+
+    feed = gtfs_realtime_pb2.FeedMessage()
+
+    feed.ParseFromString(
+        response.content
+    )
+
+    trip_update_ids = []
+    vehicle_ids = []
+
+    for entity in feed.entity:
+
+        if entity.HasField("trip_update"):
+
+            trip_id = (
+                entity
+                .trip_update
+                .trip
+                .trip_id
+            )
+
+            if "351" in trip_id:
+                trip_update_ids.append(
+                    trip_id
+                )
+
+        if entity.HasField("vehicle"):
+
+            trip_id = (
+                entity
+                .vehicle
+                .trip
+                .trip_id
+            )
+
+            if "351" in trip_id:
+                vehicle_ids.append(
+                    trip_id
+                )
+
+    return {
+        "trip_updates": trip_update_ids,
+        "vehicles": vehicle_ids
+    }
