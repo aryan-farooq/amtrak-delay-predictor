@@ -6,8 +6,10 @@ import joblib
 import pandas as pd
 import streamlit as st
 
-from live_data import get_train_351_status
-
+from live_data import (
+    get_train_351_status,
+    debug_train_ids
+)
 
 # ==========================================
 # PAGE SETTINGS
@@ -523,4 +525,24 @@ with st.expander(
         experimental estimate rather than an official
         Amtrak arrival time.
         """
+    )
+
+with st.expander("Live feed debug"):
+
+    debug_data = debug_train_ids()
+
+    st.write(
+        "Train 351 TripUpdate IDs:"
+    )
+
+    st.write(
+        debug_data["trip_updates"]
+    )
+
+    st.write(
+        "Train 351 Vehicle IDs:"
+    )
+
+    st.write(
+        debug_data["vehicles"]
     )
