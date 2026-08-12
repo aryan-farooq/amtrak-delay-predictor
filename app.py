@@ -6,10 +6,15 @@ import joblib
 import pandas as pd
 import streamlit as st
 
-from live_data import (
-    get_train_351_status,
-    debug_train_ids
-)
+from live_data import get_train_351_status
+
+# Optional debug function
+try:
+    from live_data import debug_train_ids
+    DEBUG_AVAILABLE = True
+except ImportError:
+    DEBUG_AVAILABLE = False
+
 
 # ==========================================
 # PAGE SETTINGS
@@ -55,19 +60,43 @@ def load_models():
     )
 
 
-point_model, lower_model, upper_model = load_models()
+try:
+
+    point_model, lower_model, upper_model = load_models()
+
+except Exception as exc:
+
+    st.error(
+        "The prediction models could not be loaded."
+    )
+
+    st.exception(exc)
+
+    st.stop()
 
 
 # ==========================================
 # LOAD MODEL INFORMATION
 # ==========================================
 
-with open(
-    BASE_DIR / "model_info.json",
-    "r"
-) as file:
+try:
 
-    model_info = json.load(file)
+    with open(
+        BASE_DIR / "model_info.json",
+        "r"
+    ) as file:
+
+        model_info = json.load(file)
+
+except Exception as exc:
+
+    st.error(
+        "model_info.json could not be loaded."
+    )
+
+    st.exception(exc)
+
+    st.stop()
 
 
 # ==========================================
@@ -80,8 +109,8 @@ def predict_delay(
 ):
 
     input_data = pd.DataFrame({
-        "det_delay": [det_delay],
-        "der_delay": [der_delay]
+        "det_delay": [float(det_delay)],
+        "der_delay": [float(der_delay)]
     })
 
     prediction = point_model.predict(
@@ -97,15 +126,26 @@ def predict_delay(
     )[0]
 
     return (
-        prediction,
-        lower,
-        upper
+        float(prediction),
+        float(lower),
+        float(upper)
     )
 
 
 # ==========================================
-# TIME FUNCTION
+# TIME FUNCTIONS
 # ==========================================
+
+def format_time(dt):
+
+    # Streamlit runs on Linux, where %-I works.
+    # The fallback makes the function safer elsewhere.
+    try:
+        return dt.strftime("%-I:%M %p")
+
+    except ValueError:
+        return dt.strftime("%I:%M %p").lstrip("0")
+
 
 def add_delay_to_time(
     scheduled_time,
@@ -117,16 +157,20 @@ def add_delay_to_time(
         scheduled_time
     )
 
-    # Round prediction to nearest whole minute
-    rounded_delay = round(float(delay_minutes))
+    # Passenger-facing ETA rounded to nearest minute
+    rounded_delay = round(
+        float(delay_minutes)
+    )
 
     predicted_datetime = (
         scheduled_datetime
-        + timedelta(minutes=rounded_delay)
+        + timedelta(
+            minutes=rounded_delay
+        )
     )
 
-    return predicted_datetime.strftime(
-        "%-I:%M %p"
+    return format_time(
+        predicted_datetime
     )
 
 
@@ -134,7 +178,9 @@ def add_delay_to_time(
 # HEADER
 # ==========================================
 
-st.title("🚆 Wolverine ETA Predictor")
+st.title(
+    "🚆 Wolverine ETA Predictor"
+)
 
 st.markdown(
     """
@@ -147,31 +193,36 @@ st.markdown(
 
 st.caption(
     "Independent data science project. "
-    "Not affiliated with Amtrak."
+    "Not affiliated with or operated by Amtrak."
 )
 
 st.divider()
 
 
 # ==========================================
-# INPUT SECTION
+# ROUTE
 # ==========================================
 
 st.markdown(
     """
     ### Route
 
-    **Detroit**  →  **Dearborn**  →  **Ann Arbor**
-    
-    Observed　　　Observed　　　　Predicted
+    **Detroit** → **Dearborn** → **Ann Arbor**
+
+    Observed → Observed → Predicted
     """
 )
 
+st.divider()
+
+
 # ==========================================
-# TRAIN STATUS INPUT
+# CURRENT TRAIN STATUS
 # ==========================================
 
-st.subheader("Current train status")
+st.subheader(
+    "Current train status"
+)
 
 data_source = st.radio(
     "Data source",
@@ -194,7 +245,7 @@ der_delay = None
 if data_source == "Live Amtrak data":
 
     with st.spinner(
-        "Checking Train 351..."
+        "Checking realtime Train 351 data..."
     ):
 
         live_status = (
@@ -202,8 +253,11 @@ if data_source == "Live Amtrak data":
         )
 
 
-    # Feed failed completely
-    if live_status["error"]:
+    # --------------------------------------
+    # Complete live-feed failure
+    # --------------------------------------
+
+    if live_status.get("error"):
 
         st.warning(
             "Live train data could not be loaded."
@@ -213,34 +267,51 @@ if data_source == "Live Amtrak data":
             live_status["error"]
         )
 
+        st.info(
+            "You can switch to **Manual entry** "
+            "to use the predictor."
+        )
 
-    # Feed is stale
+
+    # --------------------------------------
+    # Feed is too old
+    # --------------------------------------
+
     elif (
-        live_status["feed_age_minutes"]
-        is not None
+        live_status.get(
+            "feed_age_minutes"
+        ) is not None
         and
-        live_status["feed_age_minutes"] > 15
+        live_status[
+            "feed_age_minutes"
+        ] > 15
     ):
 
         st.warning(
-            "⚠️ The realtime Amtrak feed appears "
+            "⚠️ The realtime feed appears "
             "to be stale."
         )
 
         st.write(
-            f"Feed age: "
-            f"{live_status['feed_age_minutes']} "
-            f"minutes"
+            "Feed age: "
+            f"**{live_status['feed_age_minutes']} "
+            "minutes**"
         )
 
         st.info(
-            "Switch to Manual entry to make "
-            "a prediction."
+            "Switch to **Manual entry** "
+            "for a prediction."
         )
 
 
-    # Train 351 isn't active yet
-    elif not live_status["train_found"]:
+    # --------------------------------------
+    # Train not in feed
+    # --------------------------------------
+
+    elif not live_status.get(
+        "train_found",
+        False
+    ):
 
         st.info(
             "Train 351 is not currently present "
@@ -248,36 +319,43 @@ if data_source == "Live Amtrak data":
         )
 
 
+    # --------------------------------------
+    # Live train exists
+    # --------------------------------------
+
     else:
 
         st.success(
             "● Live Train 351 data connected"
         )
 
-        if (
-            live_status["feed_age_minutes"]
-            is not None
-        ):
+        feed_age = live_status.get(
+            "feed_age_minutes"
+        )
+
+        if feed_age is not None:
 
             st.caption(
-                f"Feed updated "
-                f"{live_status['feed_age_minutes']} "
-                f"minutes ago"
+                f"Realtime feed updated "
+                f"{feed_age:.1f} minutes ago."
             )
 
 
-        det_delay = live_status[
+        det_delay = live_status.get(
             "det_delay"
-        ]
+        )
 
-        der_delay = live_status[
+        der_delay = live_status.get(
             "der_delay"
-        ]
+        )
 
 
-        col1, col2 = st.columns(2)
+        live_col1, live_col2 = (
+            st.columns(2)
+        )
 
-        with col1:
+
+        with live_col1:
 
             if det_delay is None:
 
@@ -286,15 +364,19 @@ if data_source == "Live Amtrak data":
                     "Waiting..."
                 )
 
+                st.caption(
+                    "No observed departure yet."
+                )
+
             else:
 
                 st.metric(
-                    "Detroit",
-                    f"{det_delay:.0f} min"
+                    "Detroit departure",
+                    f"{det_delay:.0f} min late"
                 )
 
 
-        with col2:
+        with live_col2:
 
             if der_delay is None:
 
@@ -303,12 +385,35 @@ if data_source == "Live Amtrak data":
                     "Waiting..."
                 )
 
+                st.caption(
+                    "No observed departure yet."
+                )
+
             else:
 
                 st.metric(
-                    "Dearborn",
-                    f"{der_delay:.0f} min"
+                    "Dearborn departure",
+                    f"{der_delay:.0f} min late"
                 )
+
+
+        # Tell user why button might be disabled
+
+        if det_delay is None:
+
+            st.info(
+                "Waiting for Train 351 to depart "
+                "Detroit before live prediction "
+                "data becomes available."
+            )
+
+        elif der_delay is None:
+
+            st.info(
+                "Detroit data is available. "
+                "Waiting for the Dearborn departure "
+                "before making the full prediction."
+            )
 
 
 # ==========================================
@@ -317,54 +422,46 @@ if data_source == "Live Amtrak data":
 
 else:
 
-    col1, col2 = st.columns(2)
+    manual_col1, manual_col2 = (
+        st.columns(2)
+    )
 
-    with col1:
+
+    with manual_col1:
 
         det_delay = st.number_input(
             "Detroit departure delay",
             min_value=-30,
             max_value=300,
             value=0,
-            step=1
+            step=1,
+            help=(
+                "Enter minutes late. "
+                "Use a negative number "
+                "if the train departed early."
+            )
         )
 
 
-    with col2:
+    with manual_col2:
 
         der_delay = st.number_input(
             "Dearborn departure delay",
             min_value=-30,
             max_value=300,
             value=0,
-            step=1
+            step=1,
+            help=(
+                "Enter minutes late. "
+                "Use a negative number "
+                "if the train departed early."
+            )
         )
 
-col1, col2 = st.columns(2)
 
-with col1:
-
-    det_delay = st.number_input(
-        "Detroit departure delay",
-        min_value=-30,
-        max_value=300,
-        value=10,
-        step=1,
-        help="Enter minutes late. Negative values mean early."
-    )
-
-
-with col2:
-
-    der_delay = st.number_input(
-        "Dearborn departure delay",
-        min_value=-30,
-        max_value=300,
-        value=12,
-        step=1,
-        help="Enter minutes late. Negative values mean early."
-    )
-
+# ==========================================
+# SCHEDULED ARRIVAL
+# ==========================================
 
 scheduled_arrival = st.time_input(
     "Scheduled Ann Arbor arrival",
@@ -376,7 +473,7 @@ scheduled_arrival = st.time_input(
 
 
 # ==========================================
-# PREDICT BUTTON
+# DETERMINE WHETHER PREDICTION CAN RUN
 # ==========================================
 
 prediction_ready = (
@@ -385,6 +482,11 @@ prediction_ready = (
     der_delay is not None
 )
 
+
+# ==========================================
+# PREDICTION BUTTON
+# ==========================================
+
 if st.button(
     "Predict Ann Arbor arrival",
     type="primary",
@@ -392,101 +494,199 @@ if st.button(
     disabled=not prediction_ready
 ):
 
-    prediction, lower, upper = predict_delay(
-        det_delay,
-        der_delay
-    )
+    # --------------------------------------
+    # RUN MODELS
+    # --------------------------------------
 
-    predicted_time = add_delay_to_time(
-        scheduled_arrival,
-        prediction
-    )
-
-    lower_time = add_delay_to_time(
-        scheduled_arrival,
-        lower
-    )
-
-    upper_time = add_delay_to_time(
-        scheduled_arrival,
-        upper
+    prediction, lower, upper = (
+        predict_delay(
+            det_delay,
+            der_delay
+        )
     )
 
 
-    # ======================================
-    # MAIN RESULT
-    # ======================================
+    # Ensure bounds display logically
+    if lower > upper:
 
-st.divider()
+        lower, upper = upper, lower
 
-st.subheader("Prediction")
 
-with st.container(border=True):
+    # --------------------------------------
+    # CONVERT DELAYS TO CLOCK TIMES
+    # --------------------------------------
 
-    st.caption("PREDICTED ANN ARBOR ARRIVAL")
-
-    st.markdown(
-        f"# {predicted_time}"
+    predicted_time = (
+        add_delay_to_time(
+            scheduled_arrival,
+            prediction
+        )
     )
 
-    st.markdown(
-        f"**{prediction:.1f} minutes late**"
+    lower_time = (
+        add_delay_to_time(
+            scheduled_arrival,
+            lower
+        )
     )
 
-    st.markdown(
-        f"Likely arrival: "
-        f"**{lower_time} – {upper_time}**"
-    )
-
-    st.caption(
-        "Approximately 80% historical prediction interval"
+    upper_time = (
+        add_delay_to_time(
+            scheduled_arrival,
+            upper
+        )
     )
 
 
     # ======================================
-    # CURRENT STATUS
+    # RESULT
     # ======================================
 
-    st.subheader("Observed train status")
+    st.divider()
 
-    status1, status2 = st.columns(2)
+    st.subheader(
+        "Prediction"
+    )
+
+
+    with st.container(
+        border=True
+    ):
+
+        st.caption(
+            "PREDICTED ANN ARBOR ARRIVAL"
+        )
+
+        st.markdown(
+            f"# {predicted_time}"
+        )
+
+
+        if prediction >= 0:
+
+            st.markdown(
+                f"**{prediction:.1f} "
+                "minutes late**"
+            )
+
+        else:
+
+            st.markdown(
+                f"**{abs(prediction):.1f} "
+                "minutes early**"
+            )
+
+
+        st.markdown(
+            f"Likely arrival: "
+            f"**{lower_time} – "
+            f"{upper_time}**"
+        )
+
+        st.caption(
+            "Approximately 80% historical "
+            "prediction interval."
+        )
+
+
+    # ======================================
+    # OBSERVED STATUS
+    # ======================================
+
+    st.subheader(
+        "Observed train status"
+    )
+
+    status1, status2 = (
+        st.columns(2)
+    )
+
+
+    if det_delay >= 0:
+
+        det_text = (
+            f"{det_delay:.0f} min late"
+        )
+
+    else:
+
+        det_text = (
+            f"{abs(det_delay):.0f} min early"
+        )
+
+
+    if der_delay >= 0:
+
+        der_text = (
+            f"{der_delay:.0f} min late"
+        )
+
+    else:
+
+        der_text = (
+            f"{abs(der_delay):.0f} min early"
+        )
+
 
     status1.metric(
         "Detroit",
-        f"{det_delay} min"
+        det_text
     )
 
     status2.metric(
         "Dearborn",
-        f"{der_delay} min"
+        der_text
     )
 
 
 # ==========================================
-# MODEL PERFORMANCE
+# HISTORICAL PERFORMANCE
 # ==========================================
 
 st.divider()
 
-st.subheader("Historical model performance")
+st.subheader(
+    "Historical model performance"
+)
 
-metric1, metric2, metric3 = st.columns(3)
+metric1, metric2, metric3 = (
+    st.columns(3)
+)
+
 
 metric1.metric(
     "Mean absolute error",
-    f"{model_info['historical_test_mae_minutes']:.1f} min"
+    (
+        f"{model_info[
+            'historical_test_mae_minutes'
+        ]:.1f} min"
+    )
 )
+
 
 metric2.metric(
     "Within 5 min",
-    f"{model_info['within_5_minutes_percent']:.1f}%"
+    (
+        f"{model_info[
+            'within_5_minutes_percent'
+        ]:.1f}%"
+    )
 )
+
 
 metric3.metric(
     "Interval coverage",
-    f"{model_info['interval_coverage_percent']:.1f}%"
+    (
+        f"{model_info[
+            'interval_coverage_percent'
+        ]:.1f}%"
+    )
 )
 
+
+# ==========================================
+# MODEL DETAILS
+# ==========================================
 
 with st.expander(
     "How does this model work?"
@@ -498,51 +698,107 @@ with st.expander(
         performance to learn how delays propagate
         from Detroit and Dearborn to Ann Arbor.
 
-        The primary prediction is generated with
-        Gradient Boosting. Separate quantile models
-        estimate lower and upper arrival-delay bounds.
+        The primary prediction uses Gradient
+        Boosting. Separate quantile-regression
+        models estimate lower and upper bounds
+        for the arrival-time prediction interval.
 
-        Historical testing showed that upstream train
-        performance was substantially more useful than
-        calendar information such as weekday or month.
+        Testing showed that observed upstream
+        train delays were substantially more
+        useful than calendar variables such as
+        weekday or month.
         """
     )
 
 
+# ==========================================
+# LIMITATIONS
+# ==========================================
+
 with st.expander(
-    "Important limitation"
+    "Important limitations"
 ):
 
     st.write(
         """
-        Rare operational events can cause large delays
-        after the train leaves Dearborn. Historical
-        testing found that these events are difficult
-        to predict using Detroit and Dearborn delay
-        information alone.
+        Rare operational events can cause large
+        amounts of delay after the train leaves
+        Dearborn.
 
-        This tool should therefore be treated as an
-        experimental estimate rather than an official
-        Amtrak arrival time.
+        Historical testing found that these rare
+        events are difficult to predict using
+        Detroit and Dearborn delay information
+        alone.
+
+        Weather produced only a small improvement
+        during testing and did not explain the
+        largest unexpected delay events.
+
+        This application should therefore be
+        treated as an experimental estimate,
+        not an official Amtrak arrival time.
         """
     )
 
-with st.expander("Live feed debug"):
 
-    debug_data = debug_train_ids()
+# ==========================================
+# LIVE FEED DEBUG
+# ==========================================
 
-    st.write(
-        "Train 351 TripUpdate IDs:"
-    )
+if DEBUG_AVAILABLE:
 
-    st.write(
-        debug_data["trip_updates"]
-    )
+    with st.expander(
+        "Live feed debug"
+    ):
 
-    st.write(
-        "Train 351 Vehicle IDs:"
-    )
+        try:
 
-    st.write(
-        debug_data["vehicles"]
-    )
+            debug_data = (
+                debug_train_ids()
+            )
+
+            st.write(
+                "**Train 351 TripUpdate IDs**"
+            )
+
+            st.write(
+                debug_data.get(
+                    "trip_updates",
+                    []
+                )
+            )
+
+            st.write(
+                "**Train 351 Vehicle IDs**"
+            )
+
+            st.write(
+                debug_data.get(
+                    "vehicles",
+                    []
+                )
+            )
+
+        except Exception as exc:
+
+            st.write(
+                "Debug data could not "
+                "be loaded."
+            )
+
+            st.code(
+                str(exc)
+            )
+
+
+# ==========================================
+# FOOTER
+# ==========================================
+
+st.divider()
+
+st.caption(
+    "Built as an independent data science "
+    "project using historical Amtrak performance "
+    "data and machine-learning models."
+)
