@@ -314,8 +314,10 @@ if data_source == "Live Amtrak data":
     ):
 
         st.info(
-            "Train 351 is not currently present "
-            "in today's realtime feed."
+            "Train 351 is not currently active in the "
+            "realtime feed. Train 351 normally operates "
+            "in the morning. Try Live mode while the train "
+            "is running, or use Manual entry to test the model."
         )
 
 
