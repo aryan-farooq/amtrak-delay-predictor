@@ -275,13 +275,11 @@ def get_train_351_status():
         
         # Train exists if either source contains it
         if train_update is None and train_vehicle is None:
-        
-            result["error"] = (
-                f"Could not find {expected_trip_id} "
-                f"in either TripUpdates or VehiclePositions."
-            )
-        
-            return result
+
+            result["train_found"] = False
+            result["error"] = None
+
+        return result
         
         
         result["train_found"] = True
